@@ -77,7 +77,7 @@ bool inFetchMenu = false;
 bool inSavedUserSelection = false;
 bool inSavedFarmSelection = false;
 bool inSavedFarmData = false;
-
+bool indeisplaysavedfarmdata = false;
 // ค่าคงที่สำหรับคำนวณ pH
 // float calibration_value = 21.34 - 1;
 
@@ -561,6 +561,7 @@ void handleButton1ShortPress() {
         displaySavedFarmData();
     }else if (inWiFiMenu){
         WiFi.disconnect();
+        returnToHomepage();
     }
 }
 void handleButton1LongPress(){}
@@ -908,9 +909,21 @@ void handleButton4ShortPress() {
 
         delay(1000);
         displayHomepage();  
-    }
-}
+    }else if (indeisplaysavedfarmdata) { 
+        Serial.println("Exiting displaysavedfarmdata ");
+        indeisplaysavedfarmdata = false;
+        inSavedFarmSelection = true;
+        
 
+        display.clearDisplay();
+        display.setCursor(10, 10);
+        display.println("Returning to SavedFarmSelection ...");
+        display.display();
+
+        delay(1000);
+        displaySavedFarmsForUser();
+}
+}
 
 
 
@@ -1350,6 +1363,7 @@ void saveECValue(float ec) {
 // 14) แสดงข้อมูลที่บันทึก
 // -------------------------------------------------------
 void displaySavedFarmData() {
+    indeisplaysavedfarmdata = true;
     String farmId = farmIds[selectedUserIndex][selectedFarmIndex];
     int farmIndex = getFarmIndex(farmId);
 
@@ -1363,7 +1377,7 @@ void displaySavedFarmData() {
     display.clearDisplay();
     display.setTextSize(1);
     display.setCursor(0, 0);
-    display.println("Saved Data for Farm: " + farmId);
+    display.println("Saved Data for Farm: " + selectedFarmIndex);
 
     if (offlineCount[farmIndex] == 0) {
         display.setCursor(10, 20);
@@ -1660,8 +1674,8 @@ void fetchUsers() {
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println("❌ WiFi not connected. Cannot fetch users.");
         display.clearDisplay();
-        display.setTextSize(1);
-        display.setCursor(10, 10);
+        display.setTextSize(2);
+        display.setCursor(12, 23);
         display.println("No WiFi");
         display.display();
         delay(2000);
@@ -1743,7 +1757,7 @@ void fetchUsers() {
             display.clearDisplay();
             display.setTextSize(1);
             display.setCursor(10, 10);
-            display.println("✅ Data fetched!");
+            display.println(" Data fetched!");
             display.display();
             delay(2000);
     
@@ -2210,6 +2224,7 @@ void saveOfflineData(String farmId, float phValue, float ecValue) {
 void syncOfflineData() {
     if (WiFi.status() == WL_CONNECTED) {
         Serial.println("Syncing offline data...");
+        display.println("Syncing offline data...");
         for (int i = 0; i < 10; i++) {
             for (int j = 0; j < offlineCount[i]; j++) {
                 uploadDataToServer(offlineData[i][j]);  
@@ -2439,6 +2454,15 @@ void displaySavedUsersPage() {
     display.setCursor(0, 0);
     display.println("Select Saved User:");
 
+
+    if (userCount == 0) {
+        display.println("No data found");
+        display.display();
+        delay(2000);  // Display message for 2 seconds
+        returnToHomepage();  // Function to return to home page
+        inSavedUserSelection = false;
+
+    }
 
     int startIdx = userPage * 5;
     int endIdx = min(startIdx + 5, userCount);
