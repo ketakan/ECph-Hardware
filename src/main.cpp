@@ -78,6 +78,7 @@ bool inSavedUserSelection = false;
 bool inSavedFarmSelection = false;
 bool inSavedFarmData = false;
 bool indeisplaysavedfarmdata = false;
+
 // ค่าคงที่สำหรับคำนวณ pH
 // float calibration_value = 21.34 - 1;
 
@@ -382,8 +383,21 @@ void loop() {
 // -------------------------------------------------------
 void handleButtonPresses() {
     if (inCalibrationMenu) {
-        debounceCalibrationButtons();
-        return; 
+        debounceButton(BUTTON_PIN_1, 0, button1Pressed, handleButton1ShortPress, handleButton1LongPress);
+        debounceButton(BUTTON_PIN_2, 1, button2Pressed, handleButton2ShortPress, handleButton2LongPress);
+        debounceButton(BUTTON_PIN_3, 2, button3Pressed, handleButton3ShortPress, handleButton3LongPress);
+        debounceButton(BUTTON_PIN_4, 3, button4Pressed, handleButton4ShortPress, handleButton4LongPress);
+        bool btn2 = (digitalRead(BUTTON_PIN_2) == LOW);
+        if (btn2 && !button2Pressed) {
+            delay(DEBOUNCE_DELAY);
+            if (digitalRead(BUTTON_PIN_2) == LOW) {
+                button2Pressed = true;
+                handleButton2ShortPress();  
+            }
+        } else if (!btn2 && button2Pressed) {
+            button2Pressed = false;
+        }
+     
     } 
     else if (inPH_EC_Selection) {  // ตรวจสอบว่ากำลังอยู่ในหน้าเลือก Measurement (pH/EC)
         debounceButton(BUTTON_PIN_1, 0, button1Pressed, handleButton1ShortPress, handleButton1LongPress);
@@ -562,103 +576,31 @@ void handleButton1ShortPress() {
     }else if (inWiFiMenu){
         WiFi.disconnect();
         returnToHomepage();
-    }
+    }else if (inCalibrationMenu) {  
+        calibrationSelection--;
+        if (calibrationSelection < 0) {
+            calibrationSelection = calibrationOptions - 1;
+        }
+        displayCalibrationMenu();
 }
+}
+
+
 void handleButton1LongPress(){}
 
-// void handleButton2ShortPress() {
-//     Serial.print("Button 2 Short Press Detected | currentPage = ");
-//     Serial.println(currentPage);
-//     Serial.println(fetchDataMenu);
-//     Serial.println(inUserSelection);
-//     if (fetchDataMenu && currentPage == 1) {
-//         if (usersFetched) {  
-//             Serial.println("Users already fetched. Entering User Selection...");
-//             inUserSelection = true;
-//             displayUsers();
-//         } else {
-//             fetchDataMenu = false;  
-//             display.clearDisplay();  
-//             display.setCursor(10, 23);
-//             display.println("Fetching Users...");
-//             display.display();
-//             fetchUsers();  
-//         }
-//     } 
-
-//     else  if (inUserSelection) {
-//         Serial.print("Switching to Farm Selection for user: ");
-//         Serial.println(users[selectedUserIndex]);
-
-//         // ✅ เปลี่ยนสถานะจากการเลือก User ไปเป็นการเลือก Farm
-//         inUserSelection = false;
-//         inFarmSelection = true;
-//         selectedFarmIndex = 0;
-
-//         Serial.println("Calling displayFarmsForUser()");
-//         displayFarmsForUser(selectedUserIndex);  // ✅ เรียกฟังก์ชันแสดงฟาร์ม
-//     } 
-//     else if (inFarmSelection) {
-//         Serial.print("Selected Farm: ");
-//         Serial.println(farms[selectedUserIndex][selectedFarmIndex]);
-
-//         // ✅ เปลี่ยนไปเลือก pH/EC
-//         inFarmSelection = false;
-//         inPH_EC_Selection = true;
-//         displayPH_EC_Options();
-//     }
-//     else if (inPH_EC_Selection) {
-//         if (ph_ec_selection == 0) {
-//             displayRealTimePH();
-//         } else {
-//             displayRealTimeEC();
-//         }
-//     } else if (fromSavedData) {
-//         editSavedData();
-//     } else if (onHomePage && currentPage == 0) { 
-//         Serial.println("Entering WiFi Menu...");
-//         enterWiFiMenu();
-//     } else if (inWiFiMenu) { 
-//         Serial.println("Connecting to WiFi...");
-//         WiFiConnect();
-//     }else if (inSavedUserSelection) {
-//                 // User selection phase
-//                 inSavedUserSelection = false;
-//                 inSavedFarmSelection = true;
-//                 displaySavedFarmsForUser();  // Show farms for the selected user
-//     } else if (inSavedFarmSelection) {
-//                 // Farm selection phase
-//                 inSavedFarmSelection = false;
-//                 inSavedFarmData = true;
-//                 displaySavedFarmData();  // Show data for the selected farm
-//             }
-        
-//         // ✅ กรณีอยู่ในหน้า Save Data (หน้าแรก)
-//         else if (currentPage == 3) {  
-//             Serial.println("Entering Saved Data Menu...");
-            
-//             // ตั้งค่าให้เข้าโหมด Save Data
-//             fromSavedData = true;
-//             inUserSelection = true;
-//             inFarmSelection = false;
-            
-//             displaySavedUsersPage();  // เรียกฟังก์ชันที่จะแสดงหน้าเลือกผู้ใช้
-//         } else {
-//             Serial.println("Unhandled Button 2 press state.");
-//         }
-
-//     // } else if (currentPage == 3) {
-//     //     fromSavedData = true;
-//     //     displaySavedFarmData();
-//     // }
-// }
 void handleButton2ShortPress() {
     Serial.print("Button 2 Short Press Detected | currentPage = ");
     Serial.println(currentPage);
     Serial.println(fetchDataMenu);
     Serial.println(inUserSelection);
-
-    if (fetchDataMenu && currentPage == 1) {
+    if (inCalibrationMenu) {
+        if (calibrationSelection == 0) {
+            calibratePH();
+        } else {
+            calibrateEC();
+        }
+    } 
+   else if (fetchDataMenu && currentPage == 1) {
         if (usersFetched) {
             Serial.println("Users already fetched. Entering User Selection...");
             inUserSelection = true;
@@ -707,8 +649,10 @@ void handleButton2ShortPress() {
     } else if (inWiFiMenu) {
         Serial.println("Connecting to WiFi...");
         WiFiConnect();
-    } 
-    
+    } else if (onHomePage && currentPage == 2) {
+        Serial.println("Entering Caribation Menu...");
+        displayCalibrationMenu();
+    }
     
     
     else if (inSavedUserSelection) {
@@ -725,7 +669,8 @@ void handleButton2ShortPress() {
         displaySavedUsersPage();
     } else {
         Serial.println("Unhandled Button 2 press state.");
-    }
+   
+}
 }
 
 
@@ -808,14 +753,17 @@ void handleButton3ShortPress() {
         displaySavedFarmData();
     }else if (inWiFiMenu) {  
         WiFiReset();
+} else if (inCalibrationMenu) {  
+    calibrationSelection++;
+    if (calibrationSelection >= calibrationOptions) {
+        calibrationSelection = 0;
+    }
+    displayCalibrationMenu();
 }
 }
 
 
 void handleButton3LongPress (){
-    if (fromSavedData) {
-        syncOfflineData();
-    }
     }
 
 void handleButton4ShortPress() {
@@ -924,7 +872,6 @@ void handleButton4ShortPress() {
         displaySavedFarmsForUser();
 }
 }
-
 
 
 void handleButton4LongPress() {
@@ -1466,6 +1413,8 @@ void editSavedData() {
 // 15) ฟังก์ชัน Calibration
 // -------------------------------------------------------
 void displayCalibrationMenu() {
+     onHomePage = false;
+     inCalibrationMenu = true;
     display.clearDisplay();
     display.setTextSize(1);
     display.setCursor(10, 0);
@@ -1485,67 +1434,6 @@ void displayCalibrationMenu() {
 
     display.display();
 }
-
-
-
-void debounceCalibrationButtons() {
-    const unsigned long debounceInterval = 200;  // ลดเวลาหน่วงเพื่อให้ตอบสนองไวขึ้น
-
-    // ปุ่ม 1: เลื่อนขึ้น
-    if (digitalRead(BUTTON_PIN_1) == LOW && !button1Pressed) {
-        delay(debounceInterval);
-        if (digitalRead(BUTTON_PIN_1) == LOW) {
-            button1Pressed = true;
-            calibrationSelection--;
-            if (calibrationSelection < 0) calibrationSelection = calibrationOptions - 1;
-            displayCalibrationMenu();  // แสดงเมนูใหม่หลังเปลี่ยนตัวเลือก
-        }
-    } else if (digitalRead(BUTTON_PIN_1) == HIGH && button1Pressed) {
-        button1Pressed = false;
-    }
-
-    // ปุ่ม 3: เลื่อนลง
-    if (digitalRead(BUTTON_PIN_3) == LOW && !button3Pressed) {
-        delay(debounceInterval);
-        if (digitalRead(BUTTON_PIN_3) == LOW) {
-            button3Pressed = true;
-            calibrationSelection++;
-            if (calibrationSelection >= calibrationOptions) calibrationSelection = 0;
-            displayCalibrationMenu();
-        }
-    } else if (digitalRead(BUTTON_PIN_3) == HIGH && button3Pressed) {
-        button3Pressed = false;
-    }
-
-    // ปุ่ม 2: ยืนยันการเลือก Calibration
-    if (digitalRead(BUTTON_PIN_2) == LOW && !button2Pressed) {
-        delay(debounceInterval);
-        if (digitalRead(BUTTON_PIN_2) == LOW) {
-            button2Pressed = true;
-            if (calibrationSelection == 0) {
-                calibratePH();  // เข้าโหมดปรับ pH
-            } else {
-                calibrateEC();  // เข้าโหมดปรับ EC
-            }
-        }
-    } else if (digitalRead(BUTTON_PIN_2) == HIGH && button2Pressed) {
-        button2Pressed = false;
-    }
-
-    // ปุ่ม 4: กลับไปหน้า Home
-    if (digitalRead(BUTTON_PIN_4) == LOW && !button4Pressed) {
-        delay(debounceInterval);
-        if (digitalRead(BUTTON_PIN_4) == LOW) {
-            button4Pressed = true;
-            inCalibrationMenu = false;  // ออกจากเมนู Calibration
-            returnToHomepage();         // กลับไปหน้าแรก
-        }
-    } else if (digitalRead(BUTTON_PIN_4) == HIGH && button4Pressed) {
-        button4Pressed = false;
-    }
-}
-
-
 
 
 void calibratePH() {
@@ -1597,14 +1485,24 @@ void calibratePH() {
             returnToCalibrationMenu("pH Calibration Saved!");
         }
 
+        // เพิ่มเงื่อนไขออกจากโหมด Calibration เมื่อกดปุ่ม 4
+        if (digitalRead(BUTTON_PIN_4) == LOW && millis() - lastDebounceTime > debounceInterval) {
+            lastDebounceTime = millis();
+            Serial.println("Exiting Calibration PH");
+            inCalibrationMenu = true;
+            calibrating = false;  // ออกจากลูป while
+            returnToCalibrationMenu("Cancelled! ");
+        }
+
         delay(90); 
     }
 }
 
 void calibrateEC() {
+    
     float newECCalibration = currentECCalibration;
     bool calibrating = true;
-
+    
     unsigned long lastDebounceTime = 0;
     const unsigned long debounceInterval = DEBOUNCE_DELAY;
 
@@ -1649,6 +1547,14 @@ void calibrateEC() {
             saveCalibrationData(-999.9f, currentECCalibration);
             calibrating = false;
             returnToCalibrationMenu("EC Calibration Saved!");
+        }
+        
+        if (digitalRead(BUTTON_PIN_4) == LOW && millis() - lastDebounceTime > debounceInterval) {
+            lastDebounceTime = millis();
+            Serial.println("Exiting Calibration PH");
+            inCalibrationMenu = true;
+            calibrating = false;  // ออกจากลูป while
+            returnToCalibrationMenu("Cancelled!");
         }
 
         delay(90); // ลดจาก 100 เป็น 90 มิลลิวินาที
