@@ -17,13 +17,13 @@
 
 // ปุ่ม 4 ปุ่ม
 #define BUTTON_PIN_1 5
-#define BUTTON_PIN_2 23
+#define BUTTON_PIN_2 19
 #define BUTTON_PIN_3 18
-#define BUTTON_PIN_4 19   
+#define BUTTON_PIN_4 23   
 
 // ดีบั๊น + กดค้าง
 #define DEBOUNCE_DELAY 30
-#define LONG_PRESS_DURATION 5000  // 5 วินาที
+#define LONG_PRESS_DURATION 6000  // 5 วินาที
 
 
 // บอร์ดอ่านแรงดันแบตเตอรี่ (ถ้ามี)
@@ -95,8 +95,8 @@ static const int readingCount = 10;
 // -------------------------------------------------------
 // ตัวแปรเก็บค่าฟาร์ม
 // -------------------------------------------------------
-const int MAX_FARMS = 10;  // Maximum number of farms
-const int MAX_USERS = 10;
+const int MAX_FARMS = 20;  // Maximum number of farms
+const int MAX_USERS = 20;
 
 int userCount = 0;              // จำนวนผู้ใช้ทั้งหมด
 int selectedUserIndex = 0;      // ผู้ใช้ที่เลือกปัจจุบัน
@@ -109,7 +109,7 @@ int userPage = 0;
 int farmPage = 0;
 
 // Ip ดึงข้อมูล 
-const char* serverIP = "https://poor-loops-fix.loca.lt/new/";
+const char* serverIP = "https://plain-dragons-kneel.loca.lt/update2/";
 
 // ค่าสถานะ Ec ph 
 bool inPH_EC_Selection = false;  
@@ -122,17 +122,32 @@ struct Measurement {
     float ecValue;
     String timestamp;
     bool hasPh = false;  // Flag to indicate if pH is set
-    bool hasEc = false;  // Flag to indicate if EC is set
+    bool hasEc = false;
+    String source;  // Flag to indicate if EC is set
 };
 
 
-Measurement offlineData[10][3];  // เก็บข้อมูลออฟไลน์สูงสุด 3 ครั้งต่อฟาร์ม
+Measurement offlineData[10][10];  // เก็บข้อมูลออฟไลน์สูงสุด 3 ครั้งต่อฟาร์ม
 int offlineCount[10] = {0};      // จำนวนข้อมูลที่บันทึกต่อฟาร์ม
 
 String getCurrentTimestamp() {
-    return String(year()) + "-" + String(month()) + "-" + String(day()) + " " +
-           String(hour()) + ":" + String(minute()) + ":" + String(second());
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo)) {
+        Serial.println("❌ Failed to obtain time for timestamp!");
+        return "1970-01-01 00:00:00";  // ค่าเริ่มต้นถ้าไม่มีเวลา
+    }
+
+    char timestampStr[20];
+    snprintf(timestampStr, sizeof(timestampStr), "%04d-%02d-%02d %02d:%02d:%02d",
+             timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+             timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    
+    Serial.print("📅 Generated Timestamp: ");
+    Serial.println(timestampStr);  // แสดงค่า timestamp ที่ได้
+    
+    return String(timestampStr);
 }
+
 
 
 String loadUserDataFromSPIFFS() {
@@ -158,9 +173,9 @@ String loadUserDataFromSPIFFS() {
 }
 
 
-bool fromSavedData = false;  // ตรวจจับว่ากำลังเข้าจาก Saved Data
+// bool fromSavedData = false;  // ตรวจจับว่ากำลังเข้าจาก Saved Data
 int selectedEC_PH_Index = 0; // ตำแหน่งของค่าที่เลือก (0-2) เพื่อแก้ไข
-bool editingValue = false;   // ตรวจสอบว่ากำลังแก้ไขค่า
+// bool editingValue = false;   // ตรวจสอบว่ากำลังแก้ไขค่า
 
 
 // ตั้งค่า Timezone GMT+7 (ประเทศไทย)
@@ -183,10 +198,7 @@ void WiFiConnect();
 void WiFiReset();
 void displayHomepage();
 void toggleSystem();
-void savePHValue(float pH);
-void saveECValue(float ec);
 void displaySavedFarmData();
-void editSavedData();
 void syncOfflineData();
 void loadSavedDataFromSPIFFS();
 void saveCalibrationData(float phCalibration, float ecCalibration);
@@ -205,7 +217,6 @@ void handleButton4LongPress();
 
 void displayUsers();
 void displayFarmsForUser(int userIndex);
-void saveEC_PH(String farmName, float phValue, float ecValue);
 void fetchUsers(); 
 void startFetchingUsers();
 
@@ -216,21 +227,20 @@ void selectCurrentPage();
 
 
 void saveCalibrationData(float phCalibration, float ecCalibration);
-
+float loadPHCalibrationFromSPIFFS();
+float loadECCalibrationFromSPIFFS();
 
 
 
 
 // ฟังก์ชันเพิ่มเติมสำหรับ Calibration
 void displayCalibrationMenu();
-void debounceCalibrationButtons();
 void calibratePH();
 void calibrateEC();
 void returnToCalibrationMenu(const char* message);
 void selectCurrentPage();
 void displayBatteryLevel();
 void displayPage(int page);
-void returnToPreviousPage();
 
 // ฟังก์ชันสำหรับแสดงตัวเลือก pH/EC และแสดงค่าแบบเรียลไทม์
 void displayPH_EC_Options();
@@ -241,7 +251,7 @@ void saveEC(String farmName, float ecValue);
 int sendDataToServer(String postData, String apiURL);
 
 // ฟังก์ชันสำหรับการบันทึกและซิงค์ข้อมูลแบบออฟไลน์
-void saveOfflineData(String farmName, float phValue, float ecValue);
+void saveOfflineData(String farmId, float phValue, float ecValue, String source);
 void syncOfflineData();
 void uploadDataToServer(Measurement data);
 int getFarmIndex(String farmName);
@@ -249,7 +259,7 @@ int getFarmIndex(String farmName);
 
 void clearSPIFFSData();
 void deleteFileFromSPIFFS(const char* path);
-
+void showCalibrationData();
 // -------------------------------------------------------
 // ทดสอบการกดปุ่ม 
 // -------------------------------------------------------
@@ -345,7 +355,7 @@ void setup() {
     }
     loadSavedDataFromSPIFFS();  
     checkSavedDataInSPIFFS();
-
+    showCalibrationData();
 // Serial.print("Heap before WiFiConnect: ");
 //     Serial.println(ESP.getFreeHeap());
 
@@ -567,15 +577,22 @@ void handleButton1ShortPress() {
         }
         displayHomepage();
     }
-    else if (fromSavedData) {  
-        selectedEC_PH_Index--;
-        if (selectedEC_PH_Index < 0) {
-            selectedEC_PH_Index = offlineCount[getFarmIndex(farms[selectedUserIndex][selectedFarmIndex])] - 1;
-        }
-        displaySavedFarmData();
-    }else if (inWiFiMenu){
+    // else if (fromSavedData) {  
+    //     selectedEC_PH_Index--;
+    //     if (selectedEC_PH_Index < 0) {
+    //         selectedEC_PH_Index = offlineCount[getFarmIndex(farms[selectedUserIndex][selectedFarmIndex])] - 1;
+    //     }
+    //     displaySavedFarmData();
+    // }
+    else if (inWiFiMenu){
         WiFi.disconnect();
-        returnToHomepage();
+        display.clearDisplay();
+        display.setCursor(10, 10);
+        display.println("disconnect wifi");
+        display.display();
+
+        delay(500); 
+        displayHomepage();  
     }else if (inCalibrationMenu) {  
         calibrationSelection--;
         if (calibrationSelection < 0) {
@@ -583,6 +600,19 @@ void handleButton1ShortPress() {
         }
         displayCalibrationMenu();
 }
+
+
+else if (indeisplaysavedfarmdata) {  // Navigate saved farm data (UP)
+    if (selectedEC_PH_Index > 0) {  
+        selectedEC_PH_Index--;  
+    } else {  
+        selectedEC_PH_Index = offlineCount[getFarmIndex(farmIds[selectedUserIndex][selectedFarmIndex])] - 1;  // Wrap to last
+    }
+    displaySavedFarmData();
+}
+
+
+
 }
 
 
@@ -677,19 +707,29 @@ void handleButton2ShortPress() {
 void handleButton2LongPress() {
     display.clearDisplay();
     display.setCursor(10, 10);
+
+    if (WiFi.status() != WL_CONNECTED) {
+        display.println("No WiFi Connection");
+        display.display();
+        delay(2000);  // Display the message for 2 seconds
+        returnToHomepage();  // Return to the home page
+        return;
+    }
+
     display.println("Syncing data...");
     display.display();
 
-    syncOfflineData();  // เรียกฟังก์ชันซิงค์ข้อมูล
+    syncOfflineData();  // Call the function to sync data
 
     display.clearDisplay();
     display.setCursor(10, 10);
     display.println("Sync Complete!");
     display.display();
-    delay(2000);  // แสดงผลลัพธ์หลังซิงค์เสร็จ 2 วินาที
+    delay(2000);  // Display the result after syncing for 2 seconds
 
-    returnToHomepage();  // กลับสู่หน้าหลักหลังจากซิงค์
+    returnToHomepage();  // Return to the home page after syncing
 }
+
 
 
 void handleButton3ShortPress() {
@@ -745,13 +785,13 @@ void handleButton3ShortPress() {
         }
         displayHomepage();
     }
-    else if (fromSavedData) {  
-        selectedEC_PH_Index++;
-        if (selectedEC_PH_Index >= offlineCount[getFarmIndex(farms[selectedUserIndex][selectedFarmIndex])]) {
-            selectedEC_PH_Index = 0;
-        }
-        displaySavedFarmData();
-    }else if (inWiFiMenu) {  
+    // else if (fromSavedData) {  
+    //     selectedEC_PH_Index++;
+    //     if (selectedEC_PH_Index >= offlineCount[getFarmIndex(farms[selectedUserIndex][selectedFarmIndex])]) {
+    //         selectedEC_PH_Index = 0;
+    //     }
+    //     displaySavedFarmData();}
+    else if (inWiFiMenu) {  
         WiFiReset();
 } else if (inCalibrationMenu) {  
     calibrationSelection++;
@@ -760,12 +800,30 @@ void handleButton3ShortPress() {
     }
     displayCalibrationMenu();
 }
+
+
+else if (indeisplaysavedfarmdata) {  // Navigate saved farm data (DOWN)
+    if (selectedEC_PH_Index < offlineCount[getFarmIndex(farmIds[selectedUserIndex][selectedFarmIndex])] - 1) {
+        selectedEC_PH_Index++;
+    } else {
+        selectedEC_PH_Index = 0;  // Wrap back to first record
+    }
+    displaySavedFarmData();
+}
+
+
+
+
+
 }
 
 
 void handleButton3LongPress (){
+    displayPH_EC_Options();
     }
 
+
+    
 void handleButton4ShortPress() {
     Serial.println("handleButton4ShortPress called!");
 
@@ -848,7 +906,7 @@ void handleButton4ShortPress() {
         Serial.println("Exiting Calibration Menu to Home Page");
         inCalibrationMenu = false;
         onHomePage = true;
-        currentPage = 0;
+        currentPage = 2;
 
         display.clearDisplay();
         display.setCursor(10, 10);
@@ -876,82 +934,115 @@ void handleButton4ShortPress() {
 
 void handleButton4LongPress() {
     Serial.println("⚠️ Long Press Detected - Clearing SPIFFS Data...");
+    
+    // แสดงข้อความบนหน้าจอ OLED
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setCursor(10, 20);
+    display.println("Clearing Data...");
+    display.display();
+    
     clearSPIFFSData();   // ลบข้อมูลจาก SPIFFS
-    returnToHomepage();  // กลับไปหน้าหลักหลังจากลบ
+    
+    delay(2000);  // รอ 2 วินาทีให้ผู้ใช้เห็นข้อความ
+    
+    Serial.println("🔄 Restarting ESP32...");
+    ESP.restart();  // รีสตาร์ท ESP32
 }
-
-void returnToPreviousPage() {
-    if (inPH_EC_Selection) {
-        inPH_EC_Selection = false;
-        displayFarmsForUser(selectedUserIndex);
-    } else if (inFarmSelection) {
-        inFarmSelection = false;
-        displayUsers();
-    } else if (inUserSelection) {
-        inUserSelection = false;
-        displayHomepage();
-    } else if (inWiFiMenu) {
-        inWiFiMenu = false;
-        displayHomepage();
-    } else if (inCalibrationMenu) { 
-        inCalibrationMenu = false;  
-        displayHomepage();
-    } else if (!onHomePage) {
-        onHomePage = true;
-        displayHomepage();
-    }
-}
-
-
-
 
 
 // -------------------------------------------------------
 // 6) อ่านค่าเซนเซอร์ pH/EC พร้อม Moving Average
 // -------------------------------------------------------
-void readSensorValues() {
-    float sumPHRaw = 0.0f;
-    float sumECRaw = 0.0f;
+// void readSensorValues() {
+//     float sumPHRaw = 0.0f;
+//     float sumECRaw = 0.0f;
 
     
+//     for (int i = 0; i < readingCount; i++) {
+//         int rawPH = analogRead(PH_SENSOR_PIN);
+//         int rawEC = analogRead(EC_SENSOR_PIN);
+
+//         sumPHRaw += rawPH;
+//         sumECRaw += rawEC;
+
+//         delay(20); // หน่วงกัน Noise ระหว่างอ่านแต่ละครั้ง
+//     }
+
+//     float avgPHRaw = sumPHRaw / readingCount;
+//     float avgECRaw = sumECRaw / readingCount;
+
+//     // ตัวอย่างคำนวณสมการ pH ตามสูตรเบื้องต้น
+//     float voltPH = (avgPHRaw * 3.3f) / 4096.0f;
+//     ph_act = -5.6f * voltPH + calibration_value;
+
+//     // if (ph_act > 5)
+//     // {
+//     //   ph_act -= 1.65;
+//     // }
+//     // ตัวอย่างคำนวณ EC แบบง่าย
+    
+//     ec_value = avgECRaw; // ยังไม่ได้ปรับ scale
+//     float AD, voltage, ecValue;
+//     float temperature = 25.0;
+//     for (int i = 0; i < 20; i++) {
+//         sumECRaw += analogRead(EC_SENSOR_PIN);
+//         delay(20);
+//     }
+//     AD = sumECRaw / 20;
+//     voltage = (AD / 4096.0) * 5000;
+//     ecValue = ec.readEC(voltage, temperature);
+//     if (ecValue > 0) {
+//         ec_value = ecValue;
+//     }
+
+// }
+
+
+void readPHValue() {
+    float sumPHRaw = 0.0f;
+
+    // อ่านค่าจาก ADC หลายครั้งแล้วเฉลี่ยค่า
     for (int i = 0; i < readingCount; i++) {
         int rawPH = analogRead(PH_SENSOR_PIN);
-        int rawEC = analogRead(EC_SENSOR_PIN);
-
         sumPHRaw += rawPH;
-        sumECRaw += rawEC;
-
-        delay(20); // หน่วงกัน Noise ระหว่างอ่านแต่ละครั้ง
+        delay(20);  // ลด noise ด้วย delay เล็กน้อย
     }
 
     float avgPHRaw = sumPHRaw / readingCount;
-    float avgECRaw = sumECRaw / readingCount;
 
-    // ตัวอย่างคำนวณสมการ pH ตามสูตรเบื้องต้น
-    float voltPH = (avgPHRaw * 3.3f) / 4095.0f;
-    ph_act = -5.7f * voltPH + calibration_value;
+    // คำนวณค่าแรงดัน pH (ปรับตาม ESP32 หรือ Arduino)
+    float voltPH = (avgPHRaw * 3.3f) / 4096.0f;
 
-    // ตัวอย่างคำนวณ EC แบบง่าย
-    ec_value = avgECRaw; // ยังไม่ได้ปรับ scale
+    // ใช้สมการพิจารณาค่า pH
+    ph_act = -5.6f * voltPH + calibration_value;
 
-    // ถ้าคุณไม่ต้องการให้โปรแกรม “เลือก pH / EC” เอง ก็ลบเงื่อนไขนี้ออก
-    // หรือปรับเงื่อนไขให้เหมาะสม
-    /*
-    if (ph_act > 19.0 || ph_act < 5.8) {
-        pHSelected = true;
-        ECSelected = false;
-    } else {
-        pHSelected = false;
-    }
-    if (!pHSelected) {
-        if (ec_value > 0) {
-            ECSelected = true;
-        } else {
-            ECSelected = false;
-        }
-    }
-    */
 }
+
+void readECValue() {
+    float sumECRaw = 0.0f;
+    float AD, voltage, ecValue;
+    float temperature = 25.0;  // อุณหภูมิอ้างอิง (ต้องเปลี่ยนหากมีเซ็นเซอร์อุณหภูมิ)
+
+    // อ่านค่า ADC หลายครั้งแล้วเฉลี่ยค่า
+    for (int i = 0; i < 20; i++) {
+        sumECRaw += analogRead(EC_SENSOR_PIN);
+        delay(20);
+    }
+
+    AD = sumECRaw / 20;
+    voltage = (AD / 4096.0) * 5000;  // แปลงค่า ADC เป็นแรงดัน (ESP32)
+
+    ecValue = ec.readEC(voltage, temperature);
+    
+    // ป้องกันค่า EC ติดลบ
+    if (ecValue > 0) {
+        ec_value = ecValue;
+    }
+
+
+}
+
 
 // -------------------------------------------------------
 // 7) แสดงค่า pH/EC
@@ -1092,26 +1183,12 @@ void selectCurrentPage() {
                         Serial.println("Saved Data Loaded Successfully!");
                         displaySavedUsersPage();
                     } else {
-                        Serial.println("Failed to parse saved data or no data available.");
-        
-                        display.clearDisplay();
-                        display.setTextSize(1);
-                        display.setCursor(10, 10);
-                        display.println("No saved data!");
-                        display.display();
-                        delay(2000);
-                        displayHomepage();
+                        currentPage = 3; 
+                        returnToHomepage();
                     }
                 } else {
-                    Serial.println("No saved data found!");
-        
-                    display.clearDisplay();
-                    display.setTextSize(1);
-                    display.setCursor(10, 10);
-                    display.println("No saved data!");
-                    display.display();
-                    delay(2000);
-                    displayHomepage();
+                    currentPage = 3; 
+                    returnToHomepage();
                 }
             }
             break;
@@ -1125,15 +1202,30 @@ void selectCurrentPage() {
 // -------------------------------------------------------
 // 9) Display Battery Level
 // -------------------------------------------------------
+// void displayBatteryLevel() {
+//     int raw = analogRead(BATTERY_PIN);
+//     float voltage = (raw / 4095.0f) * 3.3f * 2.0f;
+//     int batteryPercent = map((int)(voltage * 100), 300, 420, 0, 100);
+//     if (batteryPercent > 100) batteryPercent = 100;
+//     if (batteryPercent < 0)  batteryPercent = 0;
+
+//     display.setCursor(0, 50);
+//     display.print("Batterly: ");
+//     display.print(batteryPercent);
+//     display.println("%");
+// }
 void displayBatteryLevel() {
     int raw = analogRead(BATTERY_PIN);
-    float voltage = (raw / 4095.0f) * 3.3f * 2.0f;
-    int batteryPercent = map((int)(voltage * 100), 300, 420, 0, 100);
-    if (batteryPercent > 100) batteryPercent = 100;
-    if (batteryPercent < 0)  batteryPercent = 0;
+    float voltage = (raw / 4095.0f) * 3.3f * 2.0f; // คำนวณแรงดันแบตเตอรี่
+
+    // ตรวจสอบแรงดันแบตเตอรี่ในช่วง 3.0V - 4.2V และแปลงเป็นเปอร์เซ็นต์
+    int batteryPercent = (int) ((voltage - 3.0f) / (4.2f - 3.0f) * 100.0f);
+
+    // จำกัดค่าแบตเตอรี่ให้อยู่ในช่วง 0% - 100%
+    batteryPercent = constrain(batteryPercent, 0, 100);
 
     display.setCursor(0, 50);
-    display.print("Batterly: ");
+    display.print("Battery: ");
     display.print(batteryPercent);
     display.println("%");
 }
@@ -1186,56 +1278,114 @@ void enterWiFiMenu() {
     inWiFiMenu = true;
 }
 
-
 void WiFiConnect() {
- 
     Serial.print("Heap before WiFiConnect: ");
     Serial.println(ESP.getFreeHeap());
     Serial.println("Attempting to connect to WiFi...");
+
     display.clearDisplay();
     display.setCursor(10, 10);
     display.println("Connecting WiFi...");
     display.display();
 
+    WiFiManager wifiManager;
+    wifiManager.setTimeout(30);  
+
     if (wifiManager.autoConnect("ESP32OLEDWifiKit")) {
-        Serial.println("WiFi Connected!");
+        Serial.println("✅ WiFi Connected!");
+        
         display.clearDisplay();
         display.setCursor(10, 10);
         display.println("Connected!");
         display.print("SSID: ");
         display.println(WiFi.SSID());
+        display.display();
+
         Serial.print("Heap after WiFiConnect: ");
         Serial.println(ESP.getFreeHeap());
+
+        // ตั้งค่าเวลา NTP
         configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
         Serial.println("⌛ Fetching NTP Time...");
         struct tm timeinfo;
         if (!getLocalTime(&timeinfo)) {
             Serial.println("❌ Failed to obtain time!");
-            return;
+        } else {
+            setTime(timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec,
+                    timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900);
+
+            Serial.println("✅ Time updated!");
+            Serial.printf("%02d:%02d:%02d %02d/%02d/%04d\n",
+                          timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec,
+                          timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900);
         }
 
-        
-        setTime(timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec,
-                timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900);
-
-        Serial.println("✅ Time updated!");
-        Serial.printf("%02d:%02d:%02d %02d/%02d/%04d\n",
-          timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec,
-          timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900);
-        
-       
+        delay(2000);
+        returnToHomepage();  // 🔹 กลับไปหน้าโฮมหลังเชื่อมต่อสำเร็จ
 
     } else {
-        Serial.println("WiFi Failed to Connect");
+        Serial.println("❌ WiFi Failed to Connect (Timeout reached)");
+
         display.clearDisplay();
         display.setCursor(10, 10);
         display.println("WiFi Failed!");
+        display.display();
+
+        delay(2000);
+        returnToHomepage();  // 🔹 กลับไปหน้าโฮมหลังเชื่อมต่อล้มเหลว
     }
+}
+
+
+// void WiFiConnect() {
+ 
+//     Serial.print("Heap before WiFiConnect: ");
+//     Serial.println(ESP.getFreeHeap());
+//     Serial.println("Attempting to connect to WiFi...");
+//     display.clearDisplay();
+//     display.setCursor(10, 10);
+//     display.println("Connecting WiFi...");
+//     display.display();
+
+//     if (wifiManager.autoConnect("ESP32OLEDWifiKit")) {
+//         Serial.println("WiFi Connected!");
+//         display.clearDisplay();
+//         display.setCursor(10, 10);
+//         display.println("Connected!");
+//         display.print("SSID: ");
+//         display.println(WiFi.SSID());
+//         Serial.print("Heap after WiFiConnect: ");
+//         Serial.println(ESP.getFreeHeap());
+//         configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+//         Serial.println("⌛ Fetching NTP Time...");
+//         struct tm timeinfo;
+//         if (!getLocalTime(&timeinfo)) {
+//             Serial.println("❌ Failed to obtain time!");
+//             return;
+//         }
+
+        
+//         setTime(timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec,
+//                 timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900);
+
+//         Serial.println("✅ Time updated!");
+//         Serial.printf("%02d:%02d:%02d %02d/%02d/%04d\n",
+//           timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec,
+//           timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900);
+        
+       
+
+//     } else {
+//         Serial.println("WiFi Failed to Connect");
+//         display.clearDisplay();
+//         display.setCursor(10, 10);
+//         display.println("WiFi Failed!");
+//     }
     
-    display.display();
-    delay(2000);
-    returnToHomepage();
- }
+//     display.display();
+//     delay(2000);
+//     returnToHomepage();
+//  }
 void WiFiReset(){
     display.clearDisplay();
     display.setCursor(10, 10);
@@ -1277,34 +1427,34 @@ void toggleSystem() {
 // -------------------------------------------------------
 // 13) ฟังก์ชันบันทึกค่า pH / EC
 // -------------------------------------------------------
-void savePHValue(float pH) {
-    // Timestamp ที่แสดงคือเวลาปัจจุบัน ไม่ได้บันทึกลง EEPROM จริง
-    String timestamp = String(year()) + "-" + String(month()) + "-" + String(day()) + " "
-                    + String(hour()) + ":" + String(minute()) + ":" + String(second());
+// void savePHValue(float pH) {
+//     // Timestamp ที่แสดงคือเวลาปัจจุบัน ไม่ได้บันทึกลง EEPROM จริง
+//     String timestamp = String(year()) + "-" + String(month()) + "-" + String(day()) + " "
+//                     + String(hour()) + ":" + String(minute()) + ":" + String(second());
 
-                    saveCalibrationData(0, pH);
+//                     saveCalibrationData(0, pH);
 
-    display.clearDisplay();
-    display.setCursor(10, 10);
-    display.println("pH Saved:");
-    display.println(timestamp);
-    display.display();
-    onSaveScreen = true;
-}
+//     display.clearDisplay();
+//     display.setCursor(10, 10);
+//     display.println("pH Saved:");
+//     display.println(timestamp);
+//     display.display();
+//     onSaveScreen = true;
+// }
 
-void saveECValue(float ec) {
-    String timestamp = String(year()) + "-" + String(month()) + "-" + String(day()) + " "
-                    + String(hour()) + ":" + String(minute()) + ":" + String(second());
+// void saveECValue(float ec) {
+//     String timestamp = String(year()) + "-" + String(month()) + "-" + String(day()) + " "
+//                     + String(hour()) + ":" + String(minute()) + ":" + String(second());
 
-                    saveCalibrationData(-999.9f, ec);  // อัปเดตเฉพาะค่า EC
+//                     saveCalibrationData(-999.9f, ec);  // อัปเดตเฉพาะค่า EC
 
-    display.clearDisplay();
-    display.setCursor(10, 10);
-    display.println("EC Saved:");
-    display.println(timestamp);
-    display.display();
-    onSaveScreen = true;
-}
+//     display.clearDisplay();
+//     display.setCursor(10, 10);
+//     display.println("EC Saved:");
+//     display.println(timestamp);
+//     display.display();
+//     onSaveScreen = true;
+// }
 
 // -------------------------------------------------------
 // 14) แสดงข้อมูลที่บันทึก
@@ -1321,12 +1471,8 @@ void displaySavedFarmData() {
 
     Serial.println("📂 Displaying Saved Data for Farm: " + farmId);
 
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("Saved Data for Farm: " + selectedFarmIndex);
-
     if (offlineCount[farmIndex] == 0) {
+        display.clearDisplay();
         display.setCursor(10, 20);
         display.println("No saved data!");
         display.display();
@@ -1335,78 +1481,95 @@ void displaySavedFarmData() {
         return;
     }
 
-    for (int i = 0; i < offlineCount[farmIndex]; i++) {
-        if (i == selectedEC_PH_Index) display.print("> ");
-        else display.print("  ");
-    
-        if (offlineData[farmIndex][i].hasPh) {
-            display.print("pH: ");
-            display.print(offlineData[farmIndex][i].phValue, 2);
-        } else if (offlineData[farmIndex][i].hasEc) {
-            display.print("EC: ");
-            display.print(offlineData[farmIndex][i].ecValue, 2);
-        }
-    
-        display.print(" Time: ");
-        display.println(offlineData[farmIndex][i].timestamp);
+    // Ensure selectedEC_PH_Index is within the valid range
+    if (selectedEC_PH_Index < 0) {
+        selectedEC_PH_Index = offlineCount[farmIndex] - 1;  // Go to last entry if out of bounds
     }
-    
-    display.display();  // Update the display
-}
+    if (selectedEC_PH_Index >= offlineCount[farmIndex]) {
+        selectedEC_PH_Index = 0;  // Wrap around to the first entry
+    }
 
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.println("Saved Data for Farm:");
 
+    Measurement data = offlineData[farmIndex][selectedEC_PH_Index];
 
-
-
-
-
-void editSavedData() {
-    int farmIndex = getFarmIndex(farms[selectedUserIndex][selectedFarmIndex]);
-
-    editingValue = true;
-    float newPH = offlineData[farmIndex][selectedEC_PH_Index].phValue;
-    float newEC = offlineData[farmIndex][selectedEC_PH_Index].ecValue;
-
-    while (editingValue) {
-        display.clearDisplay();
-        display.setCursor(0, 0);
-        display.println("Edit Saved Data");
-
-        display.setCursor(0, 20);
+    display.setCursor(10, 20);
+    if (data.hasPh) {
         display.print("pH: ");
-        display.print(newPH, 2);
-        if (selectedEC_PH_Index == 0) display.print("  <");
-
-        display.setCursor(0, 35);
+        display.println(data.phValue, 2);
+    } else if (data.hasEc) {
         display.print("EC: ");
-        display.print(newEC, 2);
-        if (selectedEC_PH_Index == 1) display.print("  <");
-
-        display.display();
-
-        if (digitalRead(BUTTON_PIN_1) == LOW) { // เพิ่มค่า
-            if (selectedEC_PH_Index == 0) newPH += 0.1;
-            else newEC += 0.1;
-            delay(200);
-        }
-        if (digitalRead(BUTTON_PIN_3) == LOW) { // ลดค่า
-            if (selectedEC_PH_Index == 0) newPH -= 0.1;
-            else newEC -= 0.1;
-            delay(200);
-        }
-        if (digitalRead(BUTTON_PIN_2) == LOW) { // บันทึก
-            offlineData[farmIndex][selectedEC_PH_Index].phValue = newPH;
-            offlineData[farmIndex][selectedEC_PH_Index].ecValue = newEC;
-            saveOfflineData(farms[selectedUserIndex][selectedFarmIndex], newPH, newEC);
-            editingValue = false;
-            displaySavedFarmData();
-        }
-        if (digitalRead(BUTTON_PIN_4) == LOW) { // ออกจากโหมดแก้ไข
-            editingValue = false;
-            displaySavedFarmData();
-        }
+        display.println(data.ecValue, 2);
     }
+
+    display.setCursor(10, 35);
+    display.print("Time: ");
+    display.println(data.timestamp);
+
+    display.setCursor(10, 50);
+    display.print("Record ");
+    display.print(selectedEC_PH_Index + 1);
+    display.print("/");
+    display.println(offlineCount[farmIndex]);
+
+    display.display();
 }
+
+
+
+
+
+
+// void editSavedData() {
+//     int farmIndex = getFarmIndex(farms[selectedUserIndex][selectedFarmIndex]);
+
+//     editingValue = true;
+//     float newPH = offlineData[farmIndex][selectedEC_PH_Index].phValue;
+//     float newEC = offlineData[farmIndex][selectedEC_PH_Index].ecValue;
+
+//     while (editingValue) {
+//         display.clearDisplay();
+//         display.setCursor(0, 0);
+//         display.println("Edit Saved Data");
+
+//         display.setCursor(0, 20);
+//         display.print("pH: ");
+//         display.print(newPH, 2);
+//         if (selectedEC_PH_Index == 0) display.print("  <");
+
+//         display.setCursor(0, 35);
+//         display.print("EC: ");
+//         display.print(newEC, 2);
+//         if (selectedEC_PH_Index == 1) display.print("  <");
+
+//         display.display();
+
+//         if (digitalRead(BUTTON_PIN_1) == LOW) { // เพิ่มค่า
+//             if (selectedEC_PH_Index == 0) newPH += 0.1;
+//             else newEC += 0.1;
+//             delay(200);
+//         }
+//         if (digitalRead(BUTTON_PIN_3) == LOW) { // ลดค่า
+//             if (selectedEC_PH_Index == 0) newPH -= 0.1;
+//             else newEC -= 0.1;
+//             delay(200);
+//         }
+//         if (digitalRead(BUTTON_PIN_2) == LOW) { // บันทึก
+//             offlineData[farmIndex][selectedEC_PH_Index].phValue = newPH;
+//             offlineData[farmIndex][selectedEC_PH_Index].ecValue = newEC;
+//             saveOfflineData(farms[selectedUserIndex][selectedFarmIndex], newPH, newEC);
+//             editingValue = false;
+//             displaySavedFarmData();
+//         }
+//         if (digitalRead(BUTTON_PIN_4) == LOW) { // ออกจากโหมดแก้ไข
+//             editingValue = false;
+//             displaySavedFarmData();
+//         }
+//     }
+// }
 
 
 // -------------------------------------------------------
@@ -1437,7 +1600,7 @@ void displayCalibrationMenu() {
 
 
 void calibratePH() {
-    float newPHCalibration = currentPHCalibration;
+    float newPHCalibration = loadPHCalibrationFromSPIFFS(); // โหลดค่าจาก SPIFFS
     bool calibrating = true;
 
     unsigned long lastDebounceTime = 0;
@@ -1449,58 +1612,56 @@ void calibratePH() {
         display.setTextSize(1);
         display.setTextColor(WHITE);
 
-        
         display.setCursor(10, 10);
         display.println("Calibrate pH");
-       
 
         // แสดงค่าการปรับเทียบปัจจุบัน
         display.setCursor(10, 30);
         display.print("pH Calibration: ");
         display.print(newPHCalibration, 2);
 
-        // แสดงเปอร์เซ็นต์แบตเตอรี่
+        // แสดงบนหน้าจอ OLED
         display.display();
 
         // ตรวจสอบการกดปุ่ม1 เพิ่มค่า
         if (digitalRead(BUTTON_PIN_1) == LOW && millis() - lastDebounceTime > debounceInterval) {
             lastDebounceTime = millis();
             newPHCalibration += 0.1f; // เพิ่มค่า
-            if (newPHCalibration > 10.0f) newPHCalibration = 10.0f; // กำหนดขอบเขต
+            if (newPHCalibration > 10.0f) newPHCalibration = 10.0f; // จำกัดค่า
         }
 
         // ตรวจสอบการกดปุ่ม3 ลดค่า
         if (digitalRead(BUTTON_PIN_3) == LOW && millis() - lastDebounceTime > debounceInterval) {
             lastDebounceTime = millis();
             newPHCalibration -= 0.1f; // ลดค่า
-            if (newPHCalibration < -10.0f) newPHCalibration = -10.0f; // กำหนดขอบเขต
+            if (newPHCalibration < -10.0f) newPHCalibration = -10.0f; // จำกัดค่า
         }
 
         // ตรวจสอบการกดปุ่ม2 บันทึกค่า
         if (digitalRead(BUTTON_PIN_2) == LOW && millis() - lastDebounceTime > debounceInterval) {
             lastDebounceTime = millis();
             currentPHCalibration = newPHCalibration;
-            saveCalibrationData(currentPHCalibration, -999.9f); 
+            saveCalibrationData(currentPHCalibration, -999.9f);
             calibrating = false;
             returnToCalibrationMenu("pH Calibration Saved!");
         }
 
-        // เพิ่มเงื่อนไขออกจากโหมด Calibration เมื่อกดปุ่ม 4
+        // ออกจากโหมด Calibration เมื่อกดปุ่ม 4
         if (digitalRead(BUTTON_PIN_4) == LOW && millis() - lastDebounceTime > debounceInterval) {
             lastDebounceTime = millis();
             Serial.println("Exiting Calibration PH");
             inCalibrationMenu = true;
-            calibrating = false;  // ออกจากลูป while
-            returnToCalibrationMenu("Cancelled! ");
+            calibrating = false;
+            returnToCalibrationMenu("Cancelled!");
         }
 
-        delay(90); 
+        delay(90);
     }
 }
 
+
 void calibrateEC() {
-    
-    float newECCalibration = currentECCalibration;
+    float newECCalibration = loadECCalibrationFromSPIFFS(); // โหลดค่าจาก SPIFFS
     bool calibrating = true;
     
     unsigned long lastDebounceTime = 0;
@@ -1512,18 +1673,13 @@ void calibrateEC() {
         display.setTextSize(1);
         display.setTextColor(WHITE);
 
-        // แสดงข้อความหัวข้อ
         display.setCursor(10, 10);
         display.println("Calibrate EC");
 
-
-        // แสดงค่าการปรับเทียบปัจจุบัน
         display.setCursor(10, 30);
         display.print("EC Calibration: ");
         display.print(newECCalibration, 2);
 
-
-       
         display.display();
 
         // ตรวจสอบการกดปุ่ม1 เพิ่มค่า
@@ -1548,18 +1704,81 @@ void calibrateEC() {
             calibrating = false;
             returnToCalibrationMenu("EC Calibration Saved!");
         }
-        
+
+        // ออกจากโหมด Calibration เมื่อกดปุ่ม 4
         if (digitalRead(BUTTON_PIN_4) == LOW && millis() - lastDebounceTime > debounceInterval) {
             lastDebounceTime = millis();
-            Serial.println("Exiting Calibration PH");
+            Serial.println("Exiting Calibration EC");
             inCalibrationMenu = true;
-            calibrating = false;  // ออกจากลูป while
+            calibrating = false;
             returnToCalibrationMenu("Cancelled!");
         }
 
-        delay(90); // ลดจาก 100 เป็น 90 มิลลิวินาที
+        delay(90);
     }
 }
+
+
+
+float loadPHCalibrationFromSPIFFS() {
+    if (!SPIFFS.exists("/calibration_data.json")) {
+        Serial.println("No calibration file found, using default pH: 0.0");
+        return 0.0f; // ไม่มีไฟล์ ให้เริ่มจาก 0.0
+    }
+
+    File file = SPIFFS.open("/calibration_data.json", FILE_READ);
+    if (!file) {
+        Serial.println("Failed to open calibration file, using default pH: 0.0");
+        return 0.0f;
+    }
+
+    DynamicJsonDocument doc(512);
+    DeserializationError error = deserializeJson(doc, file);
+    file.close();
+
+    if (error) {
+        Serial.println("Failed to parse calibration data, using default pH: 0.0");
+        return 0.0f;
+    }
+
+    if (doc.containsKey("pH_Calibration")) {
+        return doc["pH_Calibration"].as<float>(); // โหลดค่าที่บันทึกไว้
+    } else {
+        Serial.println("pH_Calibration key not found, using default pH: 0.0");
+        return 0.0f;
+    }
+}
+
+
+float loadECCalibrationFromSPIFFS() {
+    if (!SPIFFS.exists("/calibration_data.json")) {
+        Serial.println("No calibration file found, using default EC: 0.0");
+        return 0.0f; // ไม่มีไฟล์ ให้เริ่มจาก 0.0
+    }
+
+    File file = SPIFFS.open("/calibration_data.json", FILE_READ);
+    if (!file) {
+        Serial.println("Failed to open calibration file, using default EC: 0.0");
+        return 0.0f;
+    }
+
+    DynamicJsonDocument doc(512);
+    DeserializationError error = deserializeJson(doc, file);
+    file.close();
+
+    if (error) {
+        Serial.println("Failed to parse calibration data, using default EC: 0.0");
+        return 0.0f;
+    }
+
+    if (doc.containsKey("EC_Calibration")) {
+        return doc["EC_Calibration"].as<float>(); // โหลดค่าที่บันทึกไว้
+    } else {
+        Serial.println("EC_Calibration key not found, using default EC: 0.0");
+        return 0.0f;
+    }
+}
+
 
 void returnToCalibrationMenu(const char* message) {
     display.clearDisplay();
@@ -1815,10 +2034,30 @@ void fetchUsers() {
 void displayFarmsForUser(int userIndex) {
     Serial.println("Displaying Farms for User: ");
     Serial.println(users[userIndex]);
+
+    // เช็คว่าผู้ใช้มีฟาร์มหรือไม่
+    if (farmCounts[userIndex] == 0) {
+        Serial.println("No farm for user!");
+        
+        // แสดงข้อความบนหน้าจอ OLED
+        display.clearDisplay();
+        display.setTextSize(1);
+        display.setCursor(10, 20);
+        display.println("No farm for user!");
+        display.display();
+        
+        delay(2000);  // รอ 2 วินาทีเพื่อให้ผู้ใช้เห็นข้อความ
+        // กลับไปหน้าเลือกผู้ใช้
+        displayUsers();
+        inUserSelection = true;
+        return;
+    }
+
+    // ถ้ามีฟาร์ม แสดงรายการฟาร์มตามปกติ
     display.clearDisplay();
     display.setTextSize(1);
     display.setCursor(0, 0);
-    display.println("Farms for: " + users[userIndex]); // Display the user's name
+    display.println("Farms for: " + users[userIndex]);
 
     int startIdx = farmPage * 5;
     int endIdx = min(startIdx + 5, farmCounts[userIndex]);
@@ -1827,7 +2066,7 @@ void displayFarmsForUser(int userIndex) {
         selectedFarmIndex = startIdx;  // Reset to the first farm on the current page
     }
 
-    // Loop through the farms and display only the farm name
+    // Loop แสดงรายการฟาร์ม
     for (int i = startIdx; i < endIdx; i++) {
         if (i == selectedFarmIndex) {
             display.print("> ");  // Highlight the selected farm
@@ -1837,7 +2076,7 @@ void displayFarmsForUser(int userIndex) {
         display.println(farms[userIndex][i]);  // Display farm name only
     }
 
-    // Show page navigation if there are more than 5 farms
+    // แสดงหน้าเพจถ้ามีมากกว่า 5 ฟาร์ม
     if (farmCounts[userIndex] > 5) {
         display.setCursor(0, 55);
         display.print("Page ");
@@ -1846,19 +2085,14 @@ void displayFarmsForUser(int userIndex) {
         display.print((farmCounts[userIndex] + 4) / 5);  // Total pages calculation
     }
 
-    display.display();  // Update the display
+    display.display();  // อัปเดตหน้าจอ
 }
-
-
-
-
-
 
 
 
 void displayUsers() {
     Serial.println("Displaying Users...");
-    
+
     display.clearDisplay();
     display.setTextSize(1);
     display.setCursor(0, 0);
@@ -1899,6 +2133,8 @@ void displayUsers() {
 
 
 
+
+
 void startFetchingUsers() {
     // ถ้าข้อมูลถูกดึงมาแล้ว (usersFetched == true)
     // ให้แสดงหน้า Select User โดยตรง ไม่ต้องดึงข้อมูลใหม่
@@ -1924,6 +2160,9 @@ void startFetchingUsers() {
 // Ec ph ในหน้าฟาร์ม 
 // -------------------------------------------------------
 void displayPH_EC_Options() {
+    onHomePage = false;
+    inPH_EC_Selection = true;
+
     display.clearDisplay();
     display.setTextSize(1);
     display.setCursor(0, 0);
@@ -1947,39 +2186,62 @@ void displayPH_EC_Options() {
 }
 
 void displayRealTimePH() {
+    float calibrationOffset = loadPHCalibrationFromSPIFFS();
+    
     while (inPH_EC_Selection) {
-        readSensorValues();  // อ่านค่าจากเซนเซอร์
+        readPHValue();  // อ่านค่าจากเซนเซอร์
 
-        float calibratedPH = ph_act + currentPHCalibration;  // ปรับด้วยค่าการ Calibrate
+        float calibratedPH = ph_act + calibrationOffset;  // ปรับด้วยค่าการ Calibrate
 
         display.clearDisplay();
         display.setTextSize(2);
         display.setCursor(10, 20);
         display.print("pH: ");
         display.println(calibratedPH, 2);
-
         display.display();
 
+        // เมื่อกดปุ่ม 2 -> บันทึกข้อมูล pH
         if (digitalRead(BUTTON_PIN_2) == LOW) {
             delay(DEBOUNCE_DELAY);
-            //saveEC_PH(farms[selectedUserIndex][selectedFarmIndex], calibratedPH, ec_value);
-            savePH(farmIds[selectedUserIndex][selectedFarmIndex],calibratedPH);
+            
+            // แสดงข้อความ "Saving Data..."
+            display.clearDisplay();
+            display.setTextSize(2);
+            display.setCursor(10, 20);
+            display.println("Saving...");
+            display.display();
+
+            savePH(farmIds[selectedUserIndex][selectedFarmIndex], calibratedPH);
+
+            // แสดง "Saved!" บนหน้าจอ 2 วินาที
+            display.clearDisplay();
+            display.setCursor(10, 20);
+            display.println("Saved!");
+            display.display();
+            delay(2000);
+
             displayPH_EC_Options();
             break;
-        } else if (digitalRead(BUTTON_PIN_4) == LOW) {
+        } 
+        
+        // เมื่อกดปุ่ม 4 -> ออกจากเมนู
+        else if (digitalRead(BUTTON_PIN_4) == LOW) {
             delay(DEBOUNCE_DELAY);
             displayPH_EC_Options();
             break;
         }
+
         delay(100);
     }
 }
 
-void displayRealTimeEC() {
-    while (inPH_EC_Selection) {
-        readSensorValues();  // อ่านค่าจากเซนเซอร์
 
-        float calibratedEC = ec_value + currentECCalibration;  // ปรับด้วยค่าการ Calibrate
+void displayRealTimeEC() {
+    float calibrationOffset = loadECCalibrationFromSPIFFS(); 
+    while (inPH_EC_Selection) {
+        readECValue();  // อ่านค่าจากเซนเซอร์
+
+        float calibratedEC = ec_value + calibrationOffset;  // ปรับด้วยค่าการ Calibrate
 
         display.clearDisplay();
         display.setTextSize(2);
@@ -1991,8 +2253,23 @@ void displayRealTimeEC() {
 
         if (digitalRead(BUTTON_PIN_2) == LOW) {
             delay(DEBOUNCE_DELAY);
-            //saveEC_PH(farms[selectedUserIndex][selectedFarmIndex], ph_act, calibratedEC);
-            saveEC(farmIds[selectedUserIndex][selectedFarmIndex],calibratedEC);
+            
+            // แสดงข้อความ "Saving Data..."
+            display.clearDisplay();
+            display.setTextSize(2);
+            display.setCursor(10, 20);
+            display.println("Saving...");
+            display.display();
+
+            saveEC(farmIds[selectedUserIndex][selectedFarmIndex], calibratedEC);
+
+            // แสดง "Saved!" บนหน้าจอ 2 วินาที
+            display.clearDisplay();
+            display.setCursor(10, 20);
+            display.println("Saved!");
+            display.display();
+            delay(2000);
+
             displayPH_EC_Options();
             break;
         } else if (digitalRead(BUTTON_PIN_4) == LOW) {
@@ -2006,52 +2283,187 @@ void displayRealTimeEC() {
 
 // Function to save pH value
 void savePH(String farmId, float calibratedPH) {
-    // float calibratedPH = phValue + currentPHCalibration;
+    // float calibrationOffset = loadPHCalibrationFromSPIFFS(); // โหลดค่าการสอบเทียบจาก SPIFFS
+    // float calibratedPH = measuredPH + calibrationOffset; // คำนวณค่า pH ที่ถูกต้อง
+    String source = "Esp32";
     if (WiFi.status() == WL_CONNECTED) {
-        HTTPClient http; 
-
+        HTTPClient http;
         String apiURL = serverIP + String("save_ph.php");
-        String postData = "farm_id=" + farmId + "&ph=" + String(calibratedPH, 2)+"&timestamp=" + getCurrentTimestamp();
-        Serial.print(postData);
-        int httpResponseCode = sendDataToServer(postData, apiURL);
-        Serial.print(httpResponseCode); // Use retry logic
-        if (httpResponseCode > 0) {
-            Serial.println("pH Saved to DB:");
-            Serial.print(calibratedPH);
-            Serial.println(http.getString());
-        } else {
-            Serial.print("Error saving pH data: ");
-            Serial.println(httpResponseCode);
+        String postData = "farm_id=" + farmId + 
+                          "&ph=" + String(calibratedPH, 2) + 
+                          "&timestamp=" + getCurrentTimestamp() + 
+                          "&source=" + source;  // เพิ่ม source เข้าไป
+
+        Serial.println("🌍 Trying to send data to server...");
+        int attempts = 0;
+        bool success = false;
+
+        while (attempts < 3 && !success) {  // ลองส่งข้อมูล 3 ครั้ง
+            Serial.print("🔄 Attempt ");
+            Serial.println(attempts + 1);
+            
+            int httpResponseCode = sendDataToServer(postData, apiURL);
+
+            if (httpResponseCode > 0) {
+                Serial.println("✅ pH Saved to DB: " + String(calibratedPH, 2));
+                Serial.println(http.getString());
+                success = true;
+            } else {
+                Serial.println("❌ Error saving pH data (Attempt " + String(attempts + 1) + "): " + String(httpResponseCode));
+                delay(2000); // รอ 2 วินาทีแล้วลองใหม่
+                attempts++;
+            }
         }
+
+        // ถ้าส่งไม่สำเร็จ 3 ครั้ง → บันทึกออฟไลน์
+        if (!success) {
+            Serial.println("❌ Server Unreachable. Saving Offline...");
+            saveOfflineData(farmId, calibratedPH, -1.0f,source);
+        }
+
     } else {
-        saveOfflineData(farmId, calibratedPH, -1.0f);  // Save pH offline
+        Serial.println("❌ No WiFi. Saving Offline pH...");
+        saveOfflineData(farmId, calibratedPH, -1.0f,source); // บันทึกค่า pH ไว้ส่งภายหลัง
     }
 }
+
+// void savePH(String farmId, float calibratedPH) {
+//     // float calibratedPH = phValue + currentPHCalibration;
+//     if (WiFi.status() == WL_CONNECTED) {
+//         HTTPClient http; 
+
+//         String apiURL = serverIP + String("save_ph.php");
+//         String postData = "farm_id=" + farmId + "&ph=" + String(calibratedPH, 2)+"&timestamp=" + getCurrentTimestamp();
+//         Serial.print(postData);
+//         int httpResponseCode = sendDataToServer(postData, apiURL);
+//         Serial.print(httpResponseCode); // Use retry logic
+//         if (httpResponseCode > 0) {
+//             Serial.println("pH Saved to DB:");
+//             Serial.print(calibratedPH);
+//             Serial.println(http.getString());
+//         } else {
+//             Serial.print("Error saving pH data: ");
+//             Serial.println(httpResponseCode);
+//         }
+//     } else {
+//         saveOfflineData(farmId, calibratedPH, -1.0f);  // Save pH offline
+//     }
+// }
 
 // Function to save EC value
 void saveEC(String farmId, float calibratedEC) {
-    // float calibratedEC = ecValue + currentECCalibration;
+    String source = "Esp32";
 
     if (WiFi.status() == WL_CONNECTED) {
-        HTTPClient http; 
-        
+        HTTPClient http;
         String apiURL = serverIP + String("save_ec.php");
-        String postData = "farm_id=" + farmId + "&ec=" + String(calibratedEC, 2)+"&timestamp=" + getCurrentTimestamp();
-        Serial.print(postData);
-        int httpResponseCode = sendDataToServer(postData, apiURL); // Use retry logic
-        if (httpResponseCode > 0) {
-            Serial.println("EC Saved to DB:");
-            Serial.print(calibratedEC);
-            Serial.println(http.getString());
-        } else {
-            Serial.print("Error saving EC data: ");
-            Serial.println(httpResponseCode);
+        String postData = "farm_id=" + farmId + 
+                          "&ec=" + String(calibratedEC, 2) + 
+                          "&timestamp=" + getCurrentTimestamp() + 
+                          "&source=" + source;
+
+        Serial.println("🌍 Trying to send EC data to server...");
+        int attempts = 0;
+        bool success = false;
+
+        while (attempts < 3 && !success) {
+            Serial.print("🔄 Attempt ");
+            Serial.println(attempts + 1);
+            
+            
+            int httpResponseCode = sendDataToServer(postData, apiURL);
+
+            if (httpResponseCode > 0) {
+                Serial.println("✅ EC Saved to DB: " + String(calibratedEC, 2));
+                Serial.println(http.getString());
+                success = true;
+            } else {
+                Serial.println("❌ Error saving EC data (Attempt " + String(attempts + 1) + "): " + String(httpResponseCode));
+                delay(2000);
+                attempts++;
+            }
+            http.end();
         }
+
+        // ถ้าส่งไม่สำเร็จ 3 ครั้ง → บันทึกออฟไลน์
+        if (!success) {
+            Serial.println("❌ Server Unreachable. Saving Offline EC...");
+            saveOfflineData(farmId, -1.0f, calibratedEC, source);  // ✅ บันทึก EC ถูกต้อง
+        }
+
     } else {
-        Serial. println("save without net");
-        saveOfflineData(farmId, -1.0f, calibratedEC);  // Save EC offline
+        Serial.println("❌ No WiFi. Saving Offline EC...");
+        saveOfflineData(farmId, -1.0f, calibratedEC, source);  // ✅ บันทึก EC ถูกต้อง
     }
 }
+
+// void saveEC(String farmId, float calibratedEC) {
+//     // float calibrationOffset = loadPHCalibrationFromSPIFFS(); // โหลดค่าการสอบเทียบจาก SPIFFS
+//     // float calibratedPH = measuredPH + calibrationOffset; // คำนวณค่า pH ที่ถูกต้อง
+//     String source = "Esp32";
+//     if (WiFi.status() == WL_CONNECTED) {
+//         HTTPClient http;
+//         String apiURL = serverIP + String("save_ec.php");
+//         String postData = "farm_id=" + farmId + 
+//                           "&ec=" + String(calibratedEC, 2) + 
+//                           "&timestamp=" + getCurrentTimestamp() + 
+//                           "&source=" + source;  // เพิ่ม source เข้าไป
+
+//         Serial.println("🌍 Trying to send data to server...");
+//         int attempts = 0;
+//         bool success = false;
+
+//         while (attempts < 3 && !success) {  // ลองส่งข้อมูล 3 ครั้ง
+//             Serial.print("🔄 Attempt ");
+//             Serial.println(attempts + 1);
+            
+//             int httpResponseCode = sendDataToServer(postData, apiURL);
+
+//             if (httpResponseCode > 0) {
+//                 Serial.println("✅ EC Saved to DB: " + String(calibratedEC, 2));
+//                 Serial.println(http.getString());
+//                 success = true;
+//             } else {
+//                 Serial.println("❌ Error saving pH data (Attempt " + String(attempts + 1) + "): " + String(httpResponseCode));
+//                 delay(2000); // รอ 2 วินาทีแล้วลองใหม่
+//                 attempts++;
+//             }
+//         }
+
+//         // ถ้าส่งไม่สำเร็จ 3 ครั้ง → บันทึกออฟไลน์
+//         if (!success) {
+//             Serial.println("❌ Server Unreachable. Saving Offline...");
+//             saveOfflineData(farmId, -1.0f, calibratedEC, source);
+//         }
+
+//     } else {
+//         Serial.println("❌ No WiFi. Saving Offline...");
+//         saveOfflineData(farmId, -1.0f, calibratedEC, source); // บันทึกค่า pH ไว้ส่งภายหลัง
+//     }
+// }
+// void saveEC(String farmId, float calibratedEC) {
+//     // float calibratedEC = ecValue + currentECCalibration;
+
+//     if (WiFi.status() == WL_CONNECTED) {
+//         HTTPClient http; 
+        
+//         String apiURL = serverIP + String("save_ec.php");
+//         String postData = "farm_id=" + farmId + "&ec=" + String(calibratedEC, 2)+"&timestamp=" + getCurrentTimestamp();
+//         Serial.print(postData);
+//         int httpResponseCode = sendDataToServer(postData, apiURL); // Use retry logic
+//         if (httpResponseCode > 0) {
+//             Serial.println("EC Saved to DB:");
+//             Serial.print(calibratedEC);
+//             Serial.println(http.getString());
+//         } else {
+//             Serial.print("Error saving EC data: ");
+//             Serial.println(httpResponseCode);
+//         }
+//     } else {
+//         Serial. println("save without net");
+//         saveOfflineData(farmId, -1.0f, calibratedEC);  // Save EC offline
+//     }
+// }
 
 int sendDataToServer(String postData, String apiURL) {
     HTTPClient http;
@@ -2077,53 +2489,166 @@ int sendDataToServer(String postData, String apiURL) {
 }
 
 // ฟังก์ชันบันทึกข้อมูลแบบออฟไลน์
-// Modify saveOfflineData to handle both pH and EC
-void saveOfflineData(String farmId, float phValue, float ecValue) {
+
+void saveOfflineData(String farmId, float phValue, float ecValue, String source) {
     int farmIndex = getFarmIndex(farmId);
 
-    if (offlineCount[farmIndex] < 3) {  // Limit to 3 entries per farm
-        // Save data with -1.0f for missing values (pH or EC)
+    if (offlineCount[farmIndex] < 10) {  // จำกัดบันทึกออฟไลน์สูงสุด 3 รายการต่อฟาร์ม
         offlineData[farmIndex][offlineCount[farmIndex]].farmId = farmId;
-        if (phValue != -1.0f) {
-            offlineData[farmIndex][offlineCount[farmIndex]].phValue = phValue;
-            offlineData[farmIndex][offlineCount[farmIndex]].hasPh = true;  // Set the flag
-        }
-        if (ecValue != -1.0f) {
-            offlineData[farmIndex][offlineCount[farmIndex]].ecValue = ecValue;
-            offlineData[farmIndex][offlineCount[farmIndex]].hasEc = true;  // Set the flag
-        }
         offlineData[farmIndex][offlineCount[farmIndex]].timestamp = getCurrentTimestamp();
+        offlineData[farmIndex][offlineCount[farmIndex]].source = source;
+
+        if (phValue != -1.0f) {  // ตรวจสอบว่ามีค่า pH ถูกส่งมา
+            Serial.println("✅ Saving pH offline...");
+            offlineData[farmIndex][offlineCount[farmIndex]].phValue = phValue;
+            offlineData[farmIndex][offlineCount[farmIndex]].hasPh = true;
+        } else {
+            offlineData[farmIndex][offlineCount[farmIndex]].hasPh = false;
+        }
+
+        if (ecValue != -1.0f) {  // ตรวจสอบว่ามีค่า EC ถูกส่งมา
+            Serial.println("✅ Saving EC offline...");
+            offlineData[farmIndex][offlineCount[farmIndex]].ecValue = ecValue;
+            offlineData[farmIndex][offlineCount[farmIndex]].hasEc = true;
+        } else {
+            offlineData[farmIndex][offlineCount[farmIndex]].hasEc = false;
+        }
 
         offlineCount[farmIndex]++;
-        Serial.println("Saved offline:");
-        Serial.print("Farm: "); Serial.println(farmId);
-        Serial.print("Time: "); Serial.println(getCurrentTimestamp());
 
-        // Save to SPIFFS as JSON
-        DynamicJsonDocument doc(8192);  // Try increasing size if needed
+        Serial.println("✅ Saved offline successfully!");
+
+        // ✅ ตรวจสอบว่า JSON ที่บันทึกมีค่า EC หรือไม่
+        DynamicJsonDocument doc(8192);
         JsonArray offlineArray = doc.createNestedArray("offlineData");
 
         for (int i = 0; i < offlineCount[farmIndex]; i++) {
             JsonObject data = offlineArray.createNestedObject();
             data["farmId"] = offlineData[farmIndex][i].farmId;
+            data["timestamp"] = offlineData[farmIndex][i].timestamp;
+            data["source"] = offlineData[farmIndex][i].source;
+
             if (offlineData[farmIndex][i].hasPh) {
                 data["ph"] = offlineData[farmIndex][i].phValue;
                 data["statusPh"] = offlineData[farmIndex][i].hasPh;
             }
+
             if (offlineData[farmIndex][i].hasEc) {
                 data["ec"] = offlineData[farmIndex][i].ecValue;
                 data["statusEc"] = offlineData[farmIndex][i].hasEc;
             }
-            data["timestamp"] = offlineData[farmIndex][i].timestamp;
         }
 
         String jsonString;
         serializeJson(doc, jsonString);
-        saveUserDataToSPIFFS(jsonString); // Save to SPIFFS
+        Serial.println("📂 Saving JSON to SPIFFS...");
+        Serial.println(jsonString);  // ✅ Debug JSON ก่อนบันทึกลง SPIFFS
+        saveUserDataToSPIFFS(jsonString);
+
     } else {
-        Serial.println("Offline storage full for this farm!");
+        Serial.println("❌ Offline storage full for this farm!");
     }
 }
+
+
+// void saveOfflineData(String farmId, float phValue, float ecValue, String source) {
+//     int farmIndex = getFarmIndex(farmId);
+
+//     if (offlineCount[farmIndex] < 3) {  // Limit to 3 entries per farm
+//         // บันทึกค่า farmId
+//         offlineData[farmIndex][offlineCount[farmIndex]].farmId = farmId;
+        
+//         if (phValue != -1.0f) {
+//             offlineData[farmIndex][offlineCount[farmIndex]].phValue = phValue;
+//             offlineData[farmIndex][offlineCount[farmIndex]].hasPh = true;  // ตั้งค่าให้รู้ว่ามี pH
+//         }
+//         if (ecValue != -1.0f) {
+//             offlineData[farmIndex][offlineCount[farmIndex]].ecValue = ecValue;
+//             offlineData[farmIndex][offlineCount[farmIndex]].hasEc = true;  // ตั้งค่าให้รู้ว่ามี EC
+//         }
+//         offlineData[farmIndex][offlineCount[farmIndex]].timestamp = getCurrentTimestamp();
+//         offlineData[farmIndex][offlineCount[farmIndex]].source = source;  // บันทึกค่า source
+
+//         offlineCount[farmIndex]++;
+//         Serial.println("✅ Saved offline:");
+//         Serial.print("Farm: "); Serial.println(farmId);
+//         Serial.print("Time: "); Serial.println(getCurrentTimestamp());
+//         Serial.print("Source: "); Serial.println(source);
+
+//         // บันทึกลง SPIFFS เป็น JSON
+//         DynamicJsonDocument doc(8192);  // เพิ่มขนาดหากต้องการ
+//         JsonArray offlineArray = doc.createNestedArray("offlineData");
+
+//         for (int i = 0; i < offlineCount[farmIndex]; i++) {
+//             JsonObject data = offlineArray.createNestedObject();
+//             data["farmId"] = offlineData[farmIndex][i].farmId;
+//             if (offlineData[farmIndex][i].hasPh) {
+//                 data["ph"] = offlineData[farmIndex][i].phValue;
+//                 data["statusPh"] = offlineData[farmIndex][i].hasPh;
+//             }
+//             if (offlineData[farmIndex][i].hasEc) {
+//                 data["ec"] = offlineData[farmIndex][i].ecValue;
+//                 data["statusEc"] = offlineData[farmIndex][i].hasEc;
+//             }
+//             data["timestamp"] = offlineData[farmIndex][i].timestamp;
+//             data["source"] = offlineData[farmIndex][i].source;  // เพิ่มค่า source ลงใน JSON
+//         }
+
+//         String jsonString;
+//         serializeJson(doc, jsonString);
+//         saveUserDataToSPIFFS(jsonString); // บันทึกลง SPIFFS
+//     } else {
+//         Serial.println("❌ Offline storage full for this farm!");
+//     }
+// }
+
+// Modify saveOfflineData to handle both pH and EC
+// void saveOfflineData(String farmId, float phValue, float ecValue) {
+//     int farmIndex = getFarmIndex(farmId);
+
+//     if (offlineCount[farmIndex] < 10) {  // Limit to 3 entries per farm
+//         // Save data with -1.0f for missing values (pH or EC)
+//         offlineData[farmIndex][offlineCount[farmIndex]].farmId = farmId;
+//         if (phValue != -1.0f) {
+//             offlineData[farmIndex][offlineCount[farmIndex]].phValue = phValue;
+//             offlineData[farmIndex][offlineCount[farmIndex]].hasPh = true;  // Set the flag
+//         }
+//         if (ecValue != -1.0f) {
+//             offlineData[farmIndex][offlineCount[farmIndex]].ecValue = ecValue;
+//             offlineData[farmIndex][offlineCount[farmIndex]].hasEc = true;  // Set the flag
+//         }
+//         offlineData[farmIndex][offlineCount[farmIndex]].timestamp = getCurrentTimestamp();
+
+//         offlineCount[farmIndex]++;
+//         Serial.println("Saved offline:");
+//         Serial.print("Farm: "); Serial.println(farmId);
+//         Serial.print("Time: "); Serial.println(getCurrentTimestamp());
+
+//         // Save to SPIFFS as JSON
+//         DynamicJsonDocument doc(8192);  // Try increasing size if needed
+//         JsonArray offlineArray = doc.createNestedArray("offlineData");
+
+//         for (int i = 0; i < offlineCount[farmIndex]; i++) {
+//             JsonObject data = offlineArray.createNestedObject();
+//             data["farmId"] = offlineData[farmIndex][i].farmId;
+//             if (offlineData[farmIndex][i].hasPh) {
+//                 data["ph"] = offlineData[farmIndex][i].phValue;
+//                 data["statusPh"] = offlineData[farmIndex][i].hasPh;
+//             }
+//             if (offlineData[farmIndex][i].hasEc) {
+//                 data["ec"] = offlineData[farmIndex][i].ecValue;
+//                 data["statusEc"] = offlineData[farmIndex][i].hasEc;
+//             }
+//             data["timestamp"] = offlineData[farmIndex][i].timestamp;
+//         }
+
+//         String jsonString;
+//         serializeJson(doc, jsonString);
+//         saveUserDataToSPIFFS(jsonString); // Save to SPIFFS
+//     } else {
+//         Serial.println("Offline storage full for this farm!");
+//     }
+// }
 
 
 // ฟังก์ชันซิงค์ข้อมูลออฟไลน์เมื่อเชื่อมต่อ WiFi
@@ -2138,7 +2663,7 @@ void syncOfflineData() {
             offlineCount[i] = 0;  // เคลียร์ข้อมูลหลังซิงค์
         }
         Serial.println("Offline data synced successfully!");
-        // fetchUsers();
+         fetchUsers();
     } else {
         Serial.println("WiFi not connected. Cannot sync offline data.");
     }
@@ -2166,7 +2691,7 @@ void uploadDataToServer(Measurement data) {
 
     // Add timestamp to post data
     postData += "&timestamp=" + data.timestamp;
-
+    postData += "&source=Esp32";
     // Check if there's any valid data to send
     if (postData.length() > 0) {
         // Send the data to the server
@@ -2362,10 +2887,14 @@ void displaySavedUsersPage() {
 
 
     if (userCount == 0) {
-        display.println("No data found");
+        display.clearDisplay();
+        display.setCursor(10, 10);
+        display.println("no save data !");
         display.display();
-        delay(2000);  // Display message for 2 seconds
-        returnToHomepage();  // Function to return to home page
+
+        delay(1000); 
+        currentPage = 3;  
+        displayHomepage(); 
         inSavedUserSelection = false;
 
     }
@@ -2420,16 +2949,32 @@ void deleteFileFromSPIFFS(const char* path) {
 void clearSPIFFSData() {
     Serial.println("⚠️ Deleting all stored data in SPIFFS...");
 
+    if (!SPIFFS.begin(true)) {
+        Serial.println("❌ SPIFFS Initialization Failed!");
+        return;
+    }
+
     deleteFileFromSPIFFS("/user_data.json");          // ลบข้อมูลผู้ใช้และฟาร์ม
     deleteFileFromSPIFFS("/calibration_data.json");   // ลบค่าการ Calibration (pH/EC)
+    deleteFileFromSPIFFS("/offline_data.json");       // ลบข้อมูลที่บันทึกออฟไลน์
 
     Serial.println("✅ SPIFFS cleanup complete.");
 }
 
+// void clearSPIFFSData() {
+//     Serial.println("⚠️ Deleting all stored data in SPIFFS...");
+
+//     deleteFileFromSPIFFS("/user_data.json");          // ลบข้อมูลผู้ใช้และฟาร์ม
+//     deleteFileFromSPIFFS("/calibration_data.json");   // ลบค่าการ Calibration (pH/EC)
+
+//     Serial.println("✅ SPIFFS cleanup complete.");
+// }
+
+
 void displaySavedFarmsForUser() {
     Serial.println("📂 Displaying Saved Farms for selected user...");
-    inSavedUserSelection = false;  // Disable user selection
-    inSavedFarmSelection = true;   // Enable farm selection
+    inSavedUserSelection = false;  // ออกจากโหมดเลือกผู้ใช้
+    inSavedFarmSelection = true;   // เข้าโหมดเลือกฟาร์ม
 
     display.clearDisplay();
     display.setTextSize(1);
@@ -2441,20 +2986,111 @@ void displaySavedFarmsForUser() {
         display.println("No saved farms!");
         display.display();
         delay(2000);
-        displaySavedUsersPage();  // If no farms, go back to saved users page
+        displaySavedUsersPage();  // กลับไปหน้าเลือกผู้ใช้
         return;
     }
 
-    for (int i = 0; i < farmCounts[selectedUserIndex]; i++) {
+    // ✅ การแบ่งหน้า (pagination)
+    int startIdx = farmPage * 5;  // คำนวณ index เริ่มต้นของหน้า
+    int endIdx = min(startIdx + 5, farmCounts[selectedUserIndex]);
+
+    // รีเซ็ต index ถ้าอยู่นอกขอบเขต
+    if (selectedFarmIndex < startIdx || selectedFarmIndex >= endIdx) {
+        selectedFarmIndex = startIdx;
+    }
+
+    // ✅ แสดงรายการฟาร์ม (แบบแบ่งหน้า)
+    for (int i = startIdx; i < endIdx; i++) {
         if (i == selectedFarmIndex) {
-            display.print("> ");
+            display.print("> ");  // ไฮไลต์ตัวเลือกที่เลือกอยู่
         } else {
             display.print("  ");
         }
-        display.println(farms[selectedUserIndex][i]);
+        display.println(farms[selectedUserIndex][i]);  // แสดงชื่อฟาร์ม
+    }
+
+    // ✅ แสดงหมายเลขหน้าปัจจุบัน / จำนวนหน้าทั้งหมด (ถ้ามีมากกว่า 5 ฟาร์ม)
+    if (farmCounts[selectedUserIndex] > 5) {
+        display.setCursor(0, 55);
+        display.print("Page ");
+        display.print(farmPage + 1);  // แสดงหมายเลขหน้า (เริ่มจาก 1)
+        display.print("/");
+        display.print((farmCounts[selectedUserIndex] + 4) / 5);  // คำนวณจำนวนหน้าทั้งหมด
     }
 
     display.display();
 }
 
+// void displaySavedFarmsForUser() {
+//     Serial.println("📂 Displaying Saved Farms for selected user...");
+//     inSavedUserSelection = false;  // Disable user selection
+//     inSavedFarmSelection = true;   // Enable farm selection
 
+//     display.clearDisplay();
+//     display.setTextSize(1);
+//     display.setCursor(0, 0);
+//     display.println("Select Saved Farm:");
+
+//     if (farmCounts[selectedUserIndex] == 0) {
+//         display.setCursor(10, 20);
+//         display.println("No saved farms!");
+//         display.display();
+//         delay(2000);
+//         displaySavedUsersPage();  // If no farms, go back to saved users page
+//         return;
+//     }
+
+//     for (int i = 0; i < farmCounts[selectedUserIndex]; i++) {
+//         if (i == selectedFarmIndex) {
+//             display.print("> ");
+//         } else {
+//             display.print("  ");
+//         }
+//         display.println(farms[selectedUserIndex][i]);
+//     }
+
+//     display.display();
+// }
+
+
+
+
+
+void showCalibrationData() {
+    if (!SPIFFS.exists("/calibration_data.json")) {
+        Serial.println("No calibration data found.");
+        return;
+    }
+
+    File file = SPIFFS.open("/calibration_data.json", FILE_READ);
+    if (!file) {
+        Serial.println("Failed to open calibration file.");
+        return;
+    }
+
+    DynamicJsonDocument doc(512);
+    DeserializationError error = deserializeJson(doc, file);
+    if (error) {
+        Serial.println("Failed to parse calibration data.");
+        file.close();
+        return;
+    }
+
+    Serial.println("===== Calibration Data =====");
+    if (doc.containsKey("pH_Calibration")) {
+        Serial.print("pH Calibration: ");
+        Serial.println(doc["pH_Calibration"].as<float>());
+    } else {
+        Serial.println("pH Calibration not found.");
+    }
+
+    if (doc.containsKey("EC_Calibration")) {
+        Serial.print("EC Calibration: ");
+        Serial.println(doc["EC_Calibration"].as<float>());
+    } else {
+        Serial.println("EC Calibration not found.");
+    }
+
+    Serial.println("============================");
+    file.close();
+}
